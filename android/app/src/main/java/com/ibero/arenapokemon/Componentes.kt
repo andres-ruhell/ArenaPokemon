@@ -83,17 +83,26 @@ fun colorTipo(clave: String): Color = Color(
 fun textoSobreTipo(clave: String): Color =
     if (clave in setOf("electric", "ice", "ground", "steel", "normal", "bug", "rock")) Color(0xCC000000) else Color.White
 
+private val BrilloVerde = Color(0xFF4CD973)
+
+// `colorBoton` y `brillo` (resplandor verde) se leen al dibujar, así se pueden animar sin recomponer.
 @Composable
-fun Pokebola(modifier: Modifier = Modifier) {
+fun Pokebola(
+    modifier: Modifier = Modifier,
+    colorBoton: () -> Color = { Color.White },
+    brillo: () -> Float = { 0f }
+) {
     Canvas(modifier.aspectRatio(1f)) {
         val radio = size.minDimension / 2
         val linea = size.minDimension * 0.07f
         val esquina = Offset(center.x - radio, center.y - radio)
+        val boton = colorBoton()
         drawCircle(Color.White, radio)
         drawArc(RojoPokebola, 180f, 180f, useCenter = true, topLeft = esquina, size = Size(radio * 2, radio * 2))
         drawRect(Color.Black, topLeft = Offset(center.x - radio, center.y - linea / 2), size = Size(radio * 2, linea))
         drawCircle(Color.Black, radio - linea / 2, style = Stroke(linea))
-        drawCircle(Color.White, radio * 0.34f)
+        drawCircle(BrilloVerde.copy(alpha = 0.4f * brillo()), radio * 0.55f)
+        drawCircle(boton, radio * 0.34f)
         drawCircle(Color.Black, radio * 0.34f, style = Stroke(linea))
     }
 }
@@ -185,6 +194,26 @@ fun BarraPs(ps: Int, psMax: Int, modifier: Modifier = Modifier) {
                     .background(color)
             )
         }
+    }
+}
+
+@Composable
+fun BotonSecundario(titulo: String, onClick: () -> Unit, habilitado: Boolean = true) {
+    Button(
+        onClick = onClick,
+        enabled = habilitado,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = RojoPokebola.copy(alpha = 0.1f),
+            contentColor = RojoPokebola,
+            disabledContainerColor = RojoPokebola.copy(alpha = 0.06f),
+            disabledContentColor = RojoPokebola.copy(alpha = 0.45f)
+        )
+    ) {
+        Text(titulo, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 

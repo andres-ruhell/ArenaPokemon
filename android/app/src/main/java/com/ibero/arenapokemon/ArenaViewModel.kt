@@ -23,6 +23,7 @@ enum class Fase { INICIO, BUSCANDO, ELIGIENDO, ESPERANDO_RIVAL, COMBATE, FIN }
 
 data class EstadoUi(
     val fase: Fase = Fase.INICIO,
+    val contraCPU: Boolean = false,
     val miNombre: String = "",
     val rival: String = "",
     val opciones: List<PokemonResumen> = emptyList(),
@@ -35,6 +36,10 @@ data class EstadoUi(
     val narrando: Boolean = false,
     val golpesMios: Int = 0,
     val golpesRival: Int = 0,
+    val ataquesMios: Int = 0,
+    val ataquesRival: Int = 0,
+    val impactoMio: Impacto? = null,
+    val impactoRival: Impacto? = null,
     val accionEnviada: Boolean = false,
     val ganador: String? = null,
     val motivoFin: String = "",
@@ -65,8 +70,10 @@ class ArenaViewModel : ViewModel() {
     private var lector: Job? = null
     private var ultimoNombre = ""
     private var ultimoServidor = ""
+    private var impactos = 0
 
-    fun conectar(nombre: String, servidor: String) {
+    // Con `contraCPU` el servidor pone de rival a su CPU en vez de esperar a otro jugador.
+    fun conectar(nombre: String, servidor: String, contraCPU: Boolean = false) {
         desconectar()
         val direccion = servidor.trim()
         val peticion = try {
@@ -77,7 +84,7 @@ class ArenaViewModel : ViewModel() {
         }
         ultimoNombre = nombre
         ultimoServidor = direccion
-        _ui.update { it.copy(fase = Fase.BUSCANDO, miNombre = nombre, mensajeError = null) }
+        _ui.update { it.copy(fase = Fase.BUSCANDO, contraCPU = contraCPU, miNombre = nombre, mensajeError = null) }
 
         // OkHttp avisa en su propio hilo; el canal entrega los mensajes en orden al hilo principal.
         val canal = Channel<Entrada>(Channel.UNLIMITED)
@@ -94,7 +101,7 @@ class ArenaViewModel : ViewModel() {
                 canal.trySend(Entrada.Perdida)
             }
         })
-        enviar(JSONObject().put("tipo", "unirse").put("nombre", nombre))
+        enviar(JSONObject().put("tipo", if (contraCPU) "jugarCPU" else "unirse").put("nombre", nombre))
 
         lector = viewModelScope.launch {
             for (entrada in canal) {
@@ -109,7 +116,7 @@ class ArenaViewModel : ViewModel() {
         }
     }
 
-    fun jugarOtraVez() = conectar(ultimoNombre, ultimoServidor)
+    fun jugarOtraVez() = conectar(ultimoNombre, ultimoServidor, _ui.value.contraCPU)
 
     fun cancelar() {
         desconectar()
@@ -169,6 +176,8 @@ class ArenaViewModel : ViewModel() {
                     estado = null,
                     miPokemon = null,
                     pokemonRival = null,
+                    impactoMio = null,
+                    impactoRival = null,
                     ganador = null,
                     preparandoEquipo = false
                 )
@@ -206,26 +215,60 @@ class ArenaViewModel : ViewModel() {
     private suspend fun narrar(eventos: List<Evento>) {
         _ui.update { it.copy(narrando = true) }
         for (evento in eventos) {
+            val mio = evento.lado == "yo"
+            val impacto = when (evento.efecto) {
+                "golpe" -> impactoDeGolpe(evento)
+                "fallo" -> nuevoImpacto("Falló", EstiloImpacto.SIN_EFECTO, null)
+                "inmune" -> nuevoImpacto("Sin efecto", EstiloImpacto.SIN_EFECTO, null)
+                else -> null
+            }
             _ui.update { ui ->
-                val conTexto = ui.copy(narracion = evento.texto)
-                val ps = evento.ps
-                when {
-                    evento.pokemon != null && evento.lado == "yo" -> conTexto.copy(miPokemon = evento.pokemon)
-                    evento.pokemon != null -> conTexto.copy(pokemonRival = evento.pokemon)
-                    ps != null && evento.lado == "yo" -> conTexto.copy(
-                        miPokemon = ui.miPokemon?.copy(ps = ps, debilitado = ps == 0),
-                        golpesMios = ui.golpesMios + 1
-                    )
-                    ps != null -> conTexto.copy(
-                        pokemonRival = ui.pokemonRival?.copy(ps = ps, debilitado = ps == 0),
-                        golpesRival = ui.golpesRival + 1
-                    )
-                    else -> conTexto
+                val base = ui.copy(narracion = evento.texto)
+                when (evento.efecto) {
+                    "ataque" ->
+                        if (mio) base.copy(ataquesMios = ui.ataquesMios + 1)
+                        else base.copy(ataquesRival = ui.ataquesRival + 1)
+                    // El golpe baja los PS, muestra el número y hace parpadear al Pokémon.
+                    "golpe" -> {
+                        val ps = evento.ps ?: 0
+                        if (mio) base.copy(miPokemon = ui.miPokemon?.copy(ps = ps), impactoMio = impacto, golpesMios = ui.golpesMios + 1)
+                        else base.copy(pokemonRival = ui.pokemonRival?.copy(ps = ps), impactoRival = impacto, golpesRival = ui.golpesRival + 1)
+                    }
+                    "fallo", "inmune" ->
+                        if (mio) base.copy(impactoMio = impacto) else base.copy(impactoRival = impacto)
+                    "debilitado" ->
+                        if (mio) base.copy(miPokemon = ui.miPokemon?.copy(debilitado = true))
+                        else base.copy(pokemonRival = ui.pokemonRival?.copy(debilitado = true))
+                    else -> when {
+                        evento.pokemon != null && mio -> base.copy(miPokemon = evento.pokemon)
+                        evento.pokemon != null -> base.copy(pokemonRival = evento.pokemon)
+                        else -> base
+                    }
                 }
             }
-            delay(PAUSA_EVENTO)
+            // Tras la embestida el golpe llega enseguida.
+            delay(if (evento.efecto == "ataque") PAUSA_ATAQUE else PAUSA_EVENTO)
         }
         _ui.update { it.copy(narrando = false) }
+    }
+
+    private fun impactoDeGolpe(evento: Evento): Impacto {
+        val danio = evento.danio ?: 0
+        val efectividad = evento.efectividad ?: 1.0
+        if (evento.critico) {
+            return nuevoImpacto("¡−$danio!", EstiloImpacto.CRITICO, evento.tipo)
+        }
+        val estilo = when {
+            efectividad > 1 -> EstiloImpacto.EFICAZ
+            efectividad < 1 -> EstiloImpacto.POCO_EFICAZ
+            else -> EstiloImpacto.NORMAL
+        }
+        return nuevoImpacto("−$danio", estilo, evento.tipo)
+    }
+
+    private fun nuevoImpacto(texto: String, estilo: EstiloImpacto, tipo: String?): Impacto {
+        impactos += 1
+        return Impacto(impactos, texto, estilo, tipo)
     }
 
     private fun aplicar(estado: EstadoCombate) = _ui.update {
@@ -239,5 +282,6 @@ class ArenaViewModel : ViewModel() {
 
     private companion object {
         const val PAUSA_EVENTO = 900L
+        const val PAUSA_ATAQUE = 450L
     }
 }

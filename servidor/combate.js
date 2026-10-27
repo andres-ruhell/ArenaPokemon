@@ -97,30 +97,40 @@ function resolverTurno(jugadores, acciones, tabla, aleatorio = Math.random) {
       continue;
     }
 
+    // `efecto` le dice a las apps qué animar: la embestida, el golpe, el fallo o el debilitado.
     const movimiento = atacante.movimientos[acciones[i].movimiento];
-    eventos.push({ texto: `${atacante.nombre} de ${jugadores[i].nombre} usó ${movimiento.nombre}.` });
+    const tipo = movimiento.tipo.clave;
+    eventos.push({ texto: `${atacante.nombre} de ${jugadores[i].nombre} usó ${movimiento.nombre}.`, jugador: i, efecto: "ataque", tipo });
 
     if (movimiento.precision !== null && aleatorio() * 100 >= movimiento.precision) {
-      eventos.push({ texto: `¡El ataque de ${atacante.nombre} falló!` });
+      eventos.push({ texto: `¡El ataque de ${atacante.nombre} falló!`, jugador: 1 - i, efecto: "fallo" });
       continue;
     }
 
     const resultado = calcularDanio(atacante, defensor, movimiento, tabla, aleatorio);
     if (resultado.efectividad === 0) {
-      eventos.push({ texto: `No afecta a ${defensor.nombre}…` });
+      eventos.push({ texto: `No afecta a ${defensor.nombre}…`, jugador: 1 - i, efecto: "inmune" });
       continue;
     }
 
     defensor.ps = Math.max(0, defensor.ps - resultado.danio);
-    const golpe = { texto: `${defensor.nombre} recibió ${resultado.danio} de daño.`, jugador: 1 - i, ps: defensor.ps };
+    eventos.push({
+      texto: `${defensor.nombre} recibió ${resultado.danio} de daño.`,
+      jugador: 1 - i,
+      ps: defensor.ps,
+      efecto: "golpe",
+      tipo,
+      danio: resultado.danio,
+      efectividad: resultado.efectividad,
+      critico: resultado.critico
+    });
     if (resultado.critico) eventos.push({ texto: "¡Golpe crítico!" });
     if (resultado.efectividad > 1) eventos.push({ texto: "¡Es muy eficaz!" });
     if (resultado.efectividad < 1) eventos.push({ texto: "No es muy eficaz…" });
-    eventos.push(golpe);
 
     if (defensor.ps === 0) {
       defensor.debilitado = true;
-      eventos.push({ texto: `¡${defensor.nombre} de ${rival.nombre} se debilitó!` });
+      eventos.push({ texto: `¡${defensor.nombre} de ${rival.nombre} se debilitó!`, jugador: 1 - i, efecto: "debilitado" });
     }
   }
 

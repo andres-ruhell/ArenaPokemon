@@ -39,7 +39,7 @@ struct FinView: View {
             Spacer()
             VStack(spacing: 14) {
                 BotonPrincipal(titulo: "Jugar otra vez", icono: "arrow.clockwise") {
-                    cliente.conectar(nombre: nombre, servidor: servidor)
+                    cliente.conectar(nombre: nombre, servidor: servidor, contraCPU: cliente.contraCPU)
                 }
                 .accessibilityIdentifier("jugarOtraVez")
                 Button("Volver al inicio") { cliente.cancelar() }

@@ -96,6 +96,30 @@ test("el cambio de Pokémon ocurre antes del ataque", () => {
   assert.ok(agua.ps < agua.psMax);
 });
 
+test("los eventos traen lo que las apps necesitan para animar el ataque", () => {
+  const fuego = pokemon("Fuego", ["fire"], { velocidad: 200, ataqueEspecial: 250 }, [ataque("Ascuas", "fire", 40, "especial")]);
+  const planta = pokemon("Planta", ["grass"], { ps: 10 }, [ataque("Latigo", "grass", 40)]);
+  const jugadores = [jugador("Ash", [fuego]), jugador("Misty", [planta])];
+
+  const { eventos } = resolverTurno(jugadores, [
+    { accion: "atacar", movimiento: 0 },
+    { accion: "atacar", movimiento: 0 }
+  ], tabla, sinSuerte);
+
+  assert.deepEqual(eventos[0], { texto: "Fuego de Ash usó Ascuas.", jugador: 0, efecto: "ataque", tipo: "fire" });
+  const golpe = eventos[1];
+  assert.equal(golpe.efecto, "golpe");
+  assert.equal(golpe.jugador, 1);
+  assert.equal(golpe.tipo, "fire");
+  assert.equal(golpe.ps, 0);
+  assert.equal(golpe.efectividad, 2);
+  assert.equal(golpe.critico, false);
+  assert.ok(golpe.danio > 0);
+  // El golpe va antes del mensaje de efectividad, y el debilitado al final.
+  assert.equal(eventos[2].texto, "¡Es muy eficaz!");
+  assert.deepEqual(eventos[3], { texto: "¡Planta de Misty se debilitó!", jugador: 1, efecto: "debilitado" });
+});
+
 test("un ataque puede fallar según su precisión", () => {
   const a = pokemon("A", ["normal"], { velocidad: 100 }, [ataque("Hidrobomba", "water", 110, "especial", 80)]);
   const b = pokemon("B", ["normal"], {}, [ataque("Placaje", "normal", 40)]);

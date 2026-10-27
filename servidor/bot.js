@@ -1,7 +1,10 @@
 // Rival de prueba: se une a la arena, elige 3 Pokémon al azar y ataca al azar.
-// Uso: node bot.js [nombre] [servidor]   →   node bot.js Misty 127.0.0.1:3000
-const nombre = process.argv[2] || "Bot";
-const servidor = process.argv[3] || `127.0.0.1:${process.env.PORT || 3000}`;
+// Uso: node bot.js [nombre] [servidor] [--cpu]   →   node bot.js Misty 127.0.0.1:3000
+// Con --cpu juega contra la CPU del servidor en vez de esperar a otro jugador.
+const contraCPU = process.argv.includes("--cpu");
+const argumentos = process.argv.slice(2).filter((a) => a !== "--cpu");
+const nombre = argumentos[0] || "Bot";
+const servidor = argumentos[1] || `127.0.0.1:${process.env.PORT || 3000}`;
 const PAUSA = 1500;
 
 const socket = new WebSocket(`ws://${servidor}/arena`);
@@ -31,7 +34,7 @@ function jugar(estado) {
 
 socket.addEventListener("open", () => {
   console.log(`${nombre} conectado a ${servidor}`);
-  enviar({ tipo: "unirse", nombre });
+  enviar({ tipo: contraCPU ? "jugarCPU" : "unirse", nombre });
 });
 
 socket.addEventListener("message", (evento) => {

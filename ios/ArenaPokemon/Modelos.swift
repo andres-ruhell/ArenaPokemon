@@ -69,10 +69,29 @@ struct EstadoCombate: Decodable {
 
 struct Evento: Decodable {
     let texto: String
-    // "yo" o "rival" cuando el evento cambia los PS o el Pokémon en el campo.
+    // "yo" o "rival": de qué lado del campo pasa el evento.
     let lado: String?
     let ps: Int?
     let pokemon: PokemonCombate?
+    // Qué animar: "ataque", "golpe", "fallo", "inmune" o "debilitado".
+    let efecto: String?
+    let tipo: String?
+    let danio: Int?
+    let efectividad: Double?
+    let critico: Bool?
+}
+
+// Número que flota sobre el Pokémon golpeado.
+struct Impacto: Equatable {
+    enum Estilo {
+        case normal, eficaz, pocoEficaz, critico, sinEfecto
+    }
+
+    let id: Int
+    let texto: String
+    let estilo: Estilo
+    // Tipo del ataque para el color del destello; nil si no hubo golpe.
+    let tipo: String?
 }
 
 struct MensajeServidor: Decodable {

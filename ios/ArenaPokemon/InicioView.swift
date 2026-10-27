@@ -35,11 +35,27 @@ struct InicioView: View {
                         .accessibilityIdentifier("error")
                 }
 
-                BotonPrincipal(titulo: "Buscar rival", icono: "bolt.fill") {
-                    campoActivo = nil
-                    buscar()
+                VStack(spacing: 12) {
+                    BotonPrincipal(titulo: "Buscar rival", icono: "bolt.fill") {
+                        campoActivo = nil
+                        buscar(contraCPU: false)
+                    }
+                    .accessibilityIdentifier("buscar")
+
+                    Button {
+                        campoActivo = nil
+                        buscar(contraCPU: true)
+                    } label: {
+                        Label("Jugar contra la CPU", systemImage: "cpu")
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color.rojoPokebola)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color.rojoPokebola.opacity(0.1), in: RoundedRectangle(cornerRadius: 18))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("contraCPU")
                 }
-                .accessibilityIdentifier("buscar")
             }
             .frame(maxWidth: 480)
             .padding(.horizontal, 28)
@@ -50,13 +66,13 @@ struct InicioView: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
-    private func buscar() {
+    private func buscar(contraCPU: Bool) {
         let limpio = nombre.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !limpio.isEmpty else {
             cliente.mensajeError = "Escribe tu nombre de entrenador."
             return
         }
-        cliente.conectar(nombre: limpio, servidor: servidor)
+        cliente.conectar(nombre: limpio, servidor: servidor, contraCPU: contraCPU)
     }
 
     private func campo(_ titulo: String, texto: Binding<String>, ejemplo: String, campo: Campo) -> some View {
@@ -72,7 +88,7 @@ struct InicioView: View {
                 .focused($campoActivo, equals: campo)
                 .submitLabel(campo == .nombre ? .next : .go)
                 .onSubmit {
-                    if campo == .nombre { campoActivo = .servidor } else { campoActivo = nil; buscar() }
+                    if campo == .nombre { campoActivo = .servidor } else { campoActivo = nil; buscar(contraCPU: false) }
                 }
                 .padding(.horizontal, 18)
                 .frame(height: 58)

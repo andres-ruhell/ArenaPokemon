@@ -37,18 +37,29 @@ node bot.js Misty
 
 Para ver una partida completa sin apps, abre dos terminales y ejecuta `node bot.js Ash` en una y `node bot.js Misty` en la otra.
 
+## Contra la CPU
+
+Las apps tienen el botón **Jugar contra la CPU**, que envía `jugarCPU` en vez de `unirse`. El servidor crea la partida al instante con un rival de `cpu.js`. Ese rival recibe los mismos mensajes que una app y contesta con `elegirEquipo` y `accion`, así que el resto del servidor no lo distingue de un jugador.
+
+Para probarla sin apps:
+
+```bash
+node bot.js Ash --cpu
+```
+
 ## Pruebas
 
 ```bash
 node --test
 ```
 
-Prueban las reglas de `combate.js` sin conectarse a internet.
+Prueban las reglas de `combate.js` y las decisiones de `cpu.js` sin conectarse a internet.
 
 ## Archivos
 
 - `servidor.js`: Express, el WebSocket en `/arena` y un ping cada 30 s para detectar apps desconectadas.
 - `arena.js`: fila de espera, partidas y validación de cada mensaje (ids de Pokémon, ataques, cambios y una sola acción por turno).
+- `cpu.js`: la CPU. Elige un equipo fuerte y casi siempre usa su ataque más efectivo.
 - `combate.js`: stats al nivel 50, fórmula de daño, efectividad de tipos y orden del turno.
 - `pokeapi.js`: consultas a `pokeapi.co` con caché en memoria, para que cada Pokémon, ataque y tipo se pida una sola vez.
 

@@ -13,9 +13,11 @@ struct BuscandoView: View {
                 .animation(.linear(duration: 1.4).repeatForever(autoreverses: false), value: girando)
                 .onAppear { girando = true }
             VStack(spacing: 8) {
-                Text("Buscando rival…")
+                Text(cliente.contraCPU ? "Preparando a la CPU…" : "Buscando rival…")
                     .font(.system(size: 26, weight: .bold, design: .rounded))
-                Text("La partida empieza cuando otro entrenador se conecte.")
+                Text(cliente.contraCPU
+                     ? "El servidor está eligiendo los Pokémon de tu rival."
+                     : "La partida empieza cuando otro entrenador se conecte.")
                     .font(.system(size: 15))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

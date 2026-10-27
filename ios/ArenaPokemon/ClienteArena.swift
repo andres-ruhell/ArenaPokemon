@@ -11,6 +11,7 @@ final class ClienteArena {
     }
 
     private(set) var fase = Fase.inicio
+    private(set) var contraCPU = false
     private(set) var miNombre = ""
     private(set) var rival = ""
     private(set) var opciones: [PokemonResumen] = []
@@ -24,6 +25,11 @@ final class ClienteArena {
     private(set) var narrando = false
     private(set) var golpesMios = 0
     private(set) var golpesRival = 0
+    private(set) var ataquesMios = 0
+    private(set) var ataquesRival = 0
+    private(set) var impactoMio: Impacto?
+    private(set) var impactoRival: Impacto?
+    @ObservationIgnored private var impactos = 0
     private(set) var accionEnviada = false
 
     private(set) var ganador: String?
@@ -32,11 +38,14 @@ final class ClienteArena {
 
     @ObservationIgnored private var tarea: URLSessionWebSocketTask?
     private let pausaEvento = Duration.milliseconds(900)
+    // Tras la embestida el golpe llega enseguida.
+    private let pausaAtaque = Duration.milliseconds(450)
 
     var gane: Bool { ganador == miNombre }
     var puedeActuar: Bool { fase == .combate && !narrando && !accionEnviada }
 
-    func conectar(nombre: String, servidor: String) {
+    // Con `contraCPU` el servidor pone de rival a su CPU en vez de esperar a otro jugador.
+    func conectar(nombre: String, servidor: String, contraCPU: Bool = false) {
         desconectar()
         mensajeError = nil
         let direccion = servidor.trimmingCharacters(in: .whitespaces)
@@ -49,8 +58,9 @@ final class ClienteArena {
         self.tarea = tarea
         tarea.resume()
         miNombre = nombre
+        self.contraCPU = contraCPU
         fase = .buscando
-        enviar(["tipo": "unirse", "nombre": nombre])
+        enviar(["tipo": contraCPU ? "jugarCPU" : "unirse", "nombre": nombre])
         Task { await escuchar(tarea) }
     }
 
@@ -119,6 +129,8 @@ final class ClienteArena {
             estado = nil
             miPokemon = nil
             pokemonRival = nil
+            impactoMio = nil
+            impactoRival = nil
             ganador = nil
             fase = .eligiendo
         case "esperandoRival":
@@ -156,24 +168,56 @@ final class ClienteArena {
         narrando = true
         for evento in eventos {
             narracion = evento.texto
-            if let pokemon = evento.pokemon {
-                if evento.lado == "yo" { miPokemon = pokemon } else { pokemonRival = pokemon }
-            } else if let ps = evento.ps {
+            let mio = evento.lado == "yo"
+            switch evento.efecto {
+            case "ataque":
+                if mio { ataquesMios += 1 } else { ataquesRival += 1 }
+            case "golpe":
+                let ps = evento.ps ?? 0
                 withAnimation(.easeInOut(duration: 0.6)) {
-                    if evento.lado == "yo" {
-                        miPokemon?.ps = ps
-                        miPokemon?.debilitado = ps == 0
-                        golpesMios += 1
-                    } else {
-                        pokemonRival?.ps = ps
-                        pokemonRival?.debilitado = ps == 0
-                        golpesRival += 1
-                    }
+                    if mio { miPokemon?.ps = ps } else { pokemonRival?.ps = ps }
+                }
+                mostrar(impactoDeGolpe(evento), mio: mio)
+            case "fallo", "inmune":
+                mostrar(nuevoImpacto(evento.efecto == "fallo" ? "Falló" : "Sin efecto", .sinEfecto, tipo: nil), mio: mio)
+            case "debilitado":
+                withAnimation {
+                    if mio { miPokemon?.debilitado = true } else { pokemonRival?.debilitado = true }
+                }
+            default:
+                if let pokemon = evento.pokemon {
+                    if mio { miPokemon = pokemon } else { pokemonRival = pokemon }
                 }
             }
-            try? await Task.sleep(for: pausaEvento)
+            try? await Task.sleep(for: evento.efecto == "ataque" ? pausaAtaque : pausaEvento)
         }
         narrando = false
+    }
+
+    private func impactoDeGolpe(_ evento: Evento) -> Impacto {
+        let danio = evento.danio ?? 0
+        let efectividad = evento.efectividad ?? 1
+        if evento.critico == true {
+            return nuevoImpacto("¡−\(danio)!", .critico, tipo: evento.tipo)
+        }
+        let estilo: Impacto.Estilo = efectividad > 1 ? .eficaz : efectividad < 1 ? .pocoEficaz : .normal
+        return nuevoImpacto("−\(danio)", estilo, tipo: evento.tipo)
+    }
+
+    private func nuevoImpacto(_ texto: String, _ estilo: Impacto.Estilo, tipo: String?) -> Impacto {
+        impactos += 1
+        return Impacto(id: impactos, texto: texto, estilo: estilo, tipo: tipo)
+    }
+
+    // El golpe también sacude y hace parpadear al Pokémon (ver SpriteEnCampo).
+    private func mostrar(_ impacto: Impacto, mio: Bool) {
+        if mio {
+            impactoMio = impacto
+            if impacto.tipo != nil { golpesMios += 1 }
+        } else {
+            impactoRival = impacto
+            if impacto.tipo != nil { golpesRival += 1 }
+        }
     }
 
     private func aplicar(_ estado: EstadoCombate) {

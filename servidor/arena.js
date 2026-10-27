@@ -2,6 +2,7 @@
 const { WebSocket } = require("ws");
 const pokeapi = require("./pokeapi");
 const { crearCombatiente, resolverTurno, entrada } = require("./combate");
+const { crearCPU } = require("./cpu");
 
 const CANTIDAD_OPCIONES = 10;
 const TAMANO_EQUIPO = 3;
@@ -41,6 +42,8 @@ async function manejar(socket, mensaje) {
   switch (mensaje?.tipo) {
     case "unirse":
       return unirse(socket, mensaje.nombre);
+    case "jugarCPU":
+      return jugarContraCPU(socket, mensaje.nombre);
     case "elegirEquipo":
       return elegirEquipo(socket, mensaje.ids);
     case "accion":
@@ -52,64 +55,80 @@ async function manejar(socket, mensaje) {
   }
 }
 
+function limpiarNombre(nombre) {
+  const limpio = typeof nombre === "string" ? nombre.trim().slice(0, LARGO_NOMBRE) : "";
+  return limpio || "Entrenador";
+}
+
 function unirse(socket, nombre) {
   salir(socket);
-  const limpio = typeof nombre === "string" ? nombre.trim().slice(0, LARGO_NOMBRE) : "";
-  socket.nombre = limpio || "Entrenador";
+  socket.nombre = limpiarNombre(nombre);
   enEspera.push(socket);
   enviar(socket, { tipo: "esperando" });
   emparejar();
 }
 
-// Junta a los dos primeros de la fila y les reparte 10 Pokémon a cada uno.
+// Sin fila de espera: el rival es la CPU del servidor, que contesta por el mismo protocolo.
+function jugarContraCPU(socket, nombre) {
+  salir(socket);
+  socket.nombre = limpiarNombre(nombre);
+  const cpu = crearCPU((jugador, mensaje) => manejar(jugador, mensaje).catch(console.error));
+  return iniciarPartida([socket, cpu]);
+}
+
+// Junta a los dos primeros de la fila.
 async function emparejar() {
   while (enEspera.length >= 2) {
-    const sockets = enEspera.splice(0, 2);
-    const nombres = sockets.map((s) => s.nombre);
-    if (nombres[0] === nombres[1]) {
-      sockets[1].nombre = nombres[1] = `${nombres[1]} 2`;
+    await iniciarPartida(enEspera.splice(0, 2));
+  }
+}
+
+// Crea la partida y les reparte 10 Pokémon a cada jugador.
+async function iniciarPartida(sockets) {
+  const nombres = sockets.map((s) => s.nombre);
+  if (nombres[0] === nombres[1]) {
+    sockets[1].nombre = nombres[1] = `${nombres[1]} 2`;
+  }
+
+  const partida = {
+    fase: "cargando",
+    turno: 0,
+    jugadores: sockets.map((socket) => ({
+      socket,
+      nombre: socket.nombre,
+      opciones: [],
+      equipo: null,
+      cargando: false,
+      activo: 0,
+      accion: null
+    }))
+  };
+  sockets.forEach((socket, indice) => {
+    socket.partida = partida;
+    socket.indice = indice;
+  });
+  partidas.add(partida);
+  console.log(`Nueva partida: ${nombres[0]} contra ${nombres[1]}`);
+
+  try {
+    const opciones = await Promise.all(sockets.map(() => pokeapi.obtenerAleatorios(CANTIDAD_OPCIONES)));
+    if (partida.fase !== "cargando") {
+      return;
     }
-
-    const partida = {
-      fase: "cargando",
-      turno: 0,
-      jugadores: sockets.map((socket) => ({
-        socket,
-        nombre: socket.nombre,
-        opciones: [],
-        equipo: null,
-        cargando: false,
-        activo: 0,
-        accion: null
-      }))
-    };
-    sockets.forEach((socket, indice) => {
-      socket.partida = partida;
-      socket.indice = indice;
-    });
-    partidas.add(partida);
-    console.log(`Nueva partida: ${nombres[0]} contra ${nombres[1]}`);
-
-    try {
-      const opciones = await Promise.all(sockets.map(() => pokeapi.obtenerAleatorios(CANTIDAD_OPCIONES)));
-      if (partida.fase !== "cargando") {
-        continue;
-      }
-      partida.fase = "eligiendo";
-      partida.jugadores.forEach((jugador, i) => {
-        jugador.opciones = opciones[i];
-        enviar(jugador.socket, {
-          tipo: "partida",
-          nombre: jugador.nombre,
-          rival: partida.jugadores[1 - i].nombre,
-          opciones: opciones[i].map(pokeapi.resumen)
-        });
+    partida.fase = "eligiendo";
+    partida.jugadores.forEach((jugador, i) => {
+      jugador.opciones = opciones[i];
+      enviar(jugador.socket, {
+        tipo: "partida",
+        nombre: jugador.nombre,
+        rival: partida.jugadores[1 - i].nombre,
+        opciones: opciones[i].map(pokeapi.resumen)
       });
-    } catch (error) {
-      console.error(error);
-      terminar(partida);
-      sockets.forEach((socket) => enviarError(socket, "No se pudo consultar la PokeAPI. Intenta de nuevo."));
-    }
+    });
+  } catch (error) {
+    console.error(error);
+    terminar(partida);
+    sockets.forEach((socket) => enviarError(socket, "No se pudo consultar la PokeAPI. Intenta de nuevo."));
   }
 }
 
@@ -288,6 +307,11 @@ function eventosPara(partida, eventos, i) {
       const propio = evento.jugador === i;
       salida.lado = propio ? "yo" : "rival";
       salida.ps = evento.ps;
+      for (const campo of ["efecto", "tipo", "danio", "efectividad", "critico"]) {
+        if (evento[campo] !== undefined) {
+          salida[campo] = evento[campo];
+        }
+      }
       if (evento.entra) {
         const pokemon = partida.jugadores[evento.jugador].equipo[evento.indice];
         salida.pokemon = { ...vista(pokemon, propio), ps: evento.ps, debilitado: false };

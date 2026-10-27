@@ -45,13 +45,17 @@ struct CombateView: View {
                     }
                     Spacer()
                     if let rival = cliente.pokemonRival {
-                        SpriteEnCampo(url: rival.spriteFrente, debilitado: rival.debilitado, golpes: cliente.golpesRival)
+                        SpriteEnCampo(url: rival.spriteFrente, debilitado: rival.debilitado, esMio: false,
+                                      golpes: cliente.golpesRival, ataques: cliente.ataquesRival, impacto: cliente.impactoRival)
+                            .zIndex(1)
                     }
                 }
                 Spacer()
                 HStack(alignment: .bottom) {
                     if let mio = cliente.miPokemon {
-                        SpriteEnCampo(url: mio.spriteEspalda, debilitado: mio.debilitado, golpes: cliente.golpesMios)
+                        SpriteEnCampo(url: mio.spriteEspalda, debilitado: mio.debilitado, esMio: true,
+                                      golpes: cliente.golpesMios, ataques: cliente.ataquesMios, impacto: cliente.impactoMio)
+                            .zIndex(1)
                     }
                     Spacer()
                     if let mio = cliente.miPokemon {
@@ -176,34 +180,164 @@ private struct TarjetaEstado: View {
     }
 }
 
+// Un Pokémon en el campo. `ataques` dispara la embestida hacia el rival y `golpes` el
+// parpadeo con sacudida; `impacto` muestra el número de daño flotando encima.
 private struct SpriteEnCampo: View {
     let url: String
     let debilitado: Bool
+    let esMio: Bool
     let golpes: Int
+    let ataques: Int
+    let impacto: Impacto?
+
+    private struct Golpe {
+        var desplazamiento = 0.0
+        var opacidad = 1.0
+    }
+
+    private struct Embestida {
+        var avance = 0.0
+        var escala = 1.0
+    }
 
     var body: some View {
+        // El tuyo se lanza hacia arriba a la derecha; el del rival, hacia abajo a la izquierda.
+        let direccion = esMio ? 1.0 : -1.0
         ZStack(alignment: .bottom) {
             Ellipse()
                 .fill(Color(red: 0.45, green: 0.67, blue: 0.35).opacity(0.55))
                 .frame(width: 130, height: 30)
             SpriteRemoto(url: url, pixelado: true)
                 .frame(width: 128, height: 128)
-                .padding(.bottom, 8)
-                .opacity(debilitado ? 0 : 1)
-                .offset(y: debilitado ? 30 : 0)
-                .animation(.easeIn(duration: 0.5), value: debilitado)
-                .keyframeAnimator(initialValue: 0.0, trigger: golpes) { contenido, desplazamiento in
-                    contenido.offset(x: desplazamiento)
+                .keyframeAnimator(initialValue: Golpe(), trigger: golpes) { contenido, valor in
+                    contenido
+                        .offset(x: valor.desplazamiento)
+                        .opacity(valor.opacidad)
                 } keyframes: { _ in
-                    KeyframeTrack {
+                    KeyframeTrack(\.desplazamiento) {
                         LinearKeyframe(-10, duration: 0.06)
                         LinearKeyframe(10, duration: 0.08)
                         LinearKeyframe(-6, duration: 0.08)
                         LinearKeyframe(0, duration: 0.06)
                     }
+                    KeyframeTrack(\.opacidad) {
+                        LinearKeyframe(0.2, duration: 0.05)
+                        LinearKeyframe(1, duration: 0.07)
+                        LinearKeyframe(0.2, duration: 0.05)
+                        LinearKeyframe(1, duration: 0.07)
+                    }
                 }
+                .keyframeAnimator(initialValue: Embestida(), trigger: ataques) { contenido, valor in
+                    contenido
+                        .scaleEffect(valor.escala)
+                        .offset(x: direccion * valor.avance * 40, y: -direccion * valor.avance * 40)
+                } keyframes: { _ in
+                    KeyframeTrack(\.avance) {
+                        CubicKeyframe(-0.15, duration: 0.1)
+                        CubicKeyframe(1, duration: 0.12)
+                        SpringKeyframe(0, duration: 0.3, spring: .snappy)
+                    }
+                    KeyframeTrack(\.escala) {
+                        LinearKeyframe(1, duration: 0.1)
+                        CubicKeyframe(1.12, duration: 0.12)
+                        CubicKeyframe(1, duration: 0.3)
+                    }
+                }
+                .padding(.bottom, 8)
+                .opacity(debilitado ? 0 : 1)
+                .offset(y: debilitado ? 30 : 0)
+                .animation(.easeIn(duration: 0.5), value: debilitado)
+
+            if let impacto {
+                Group {
+                    if let tipo = impacto.tipo {
+                        DestelloGolpe(color: Color.tipo(tipo))
+                    }
+                    NumeroFlotante(impacto: impacto)
+                }
+                .id(impacto.id)
+            }
         }
         .accessibilityHidden(true)
+    }
+}
+
+// Anillo del color del tipo del ataque que se expande desde el centro del Pokémon.
+private struct DestelloGolpe: View {
+    let color: Color
+    @State private var expandido = false
+
+    var body: some View {
+        Circle()
+            .stroke(color, lineWidth: expandido ? 1 : 10)
+            .frame(width: 40, height: 40)
+            .scaleEffect(expandido ? 2.6 : 0.3)
+            .opacity(expandido ? 0 : 0.9)
+            .padding(.bottom, 52)
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.45)) { expandido = true }
+            }
+            .allowsHitTesting(false)
+    }
+}
+
+// "−48" que aparece de golpe, sube y se desvanece. Más grande si fue muy eficaz o crítico.
+private struct NumeroFlotante: View {
+    let impacto: Impacto
+    @State private var iniciar = false
+
+    private struct Estado {
+        var escala = 0.4
+        var opacidad = 0.0
+        var subida = 0.0
+    }
+
+    private var tamano: CGFloat {
+        switch impacto.estilo {
+        case .critico: 36
+        case .eficaz: 32
+        case .normal: 26
+        case .pocoEficaz: 21
+        case .sinEfecto: 19
+        }
+    }
+
+    private var color: Color {
+        switch impacto.estilo {
+        case .critico: Color(red: 1, green: 0.35, blue: 0.21)
+        case .eficaz: Color(red: 1, green: 0.76, blue: 0.1)
+        case .normal: .white
+        case .pocoEficaz: Color(white: 0.9)
+        case .sinEfecto: Color(white: 0.82)
+        }
+    }
+
+    var body: some View {
+        KeyframeAnimator(initialValue: Estado(), trigger: iniciar) { valor in
+            Text(impacto.texto)
+                .font(.system(size: tamano, weight: .black, design: .rounded))
+                .foregroundStyle(color)
+                .shadow(color: .black.opacity(0.45), radius: 0, x: 1.5, y: 1.5)
+                .scaleEffect(valor.escala)
+                .opacity(valor.opacidad)
+                .offset(y: -valor.subida)
+                .padding(.bottom, 70)
+        } keyframes: { _ in
+            KeyframeTrack(\.escala) {
+                SpringKeyframe(impacto.estilo == .critico ? 1.35 : 1.1, duration: 0.18, spring: .bouncy)
+                CubicKeyframe(1, duration: 0.15)
+            }
+            KeyframeTrack(\.opacidad) {
+                LinearKeyframe(1, duration: 0.08)
+                LinearKeyframe(1, duration: 0.55)
+                LinearKeyframe(0, duration: 0.3)
+            }
+            KeyframeTrack(\.subida) {
+                CubicKeyframe(36, duration: 0.95)
+            }
+        }
+        .onAppear { iniciar = true }
+        .allowsHitTesting(false)
     }
 }
 

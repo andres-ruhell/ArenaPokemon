@@ -53,8 +53,24 @@ data class LadoRival(val nombre: String, val activo: PokemonCombate, val vivos: 
 
 data class EstadoCombate(val turno: Int, val yo: LadoPropio, val rival: LadoRival)
 
-// `lado` es "yo" o "rival" cuando el evento cambia los PS o el Pokémon en el campo.
-data class Evento(val texto: String, val lado: String?, val ps: Int?, val pokemon: PokemonCombate?)
+// `lado` es "yo" o "rival": de qué lado del campo pasa el evento.
+// `efecto` dice qué animar: "ataque", "golpe", "fallo", "inmune" o "debilitado".
+data class Evento(
+    val texto: String,
+    val lado: String?,
+    val ps: Int?,
+    val pokemon: PokemonCombate?,
+    val efecto: String?,
+    val tipo: String?,
+    val danio: Int?,
+    val efectividad: Double?,
+    val critico: Boolean
+)
+
+enum class EstiloImpacto { NORMAL, EFICAZ, POCO_EFICAZ, CRITICO, SIN_EFECTO }
+
+// Número que flota sobre el Pokémon golpeado. `tipo` colorea el destello; null si no hubo golpe.
+data class Impacto(val id: Int, val texto: String, val estilo: EstiloImpacto, val tipo: String?)
 
 private fun <T> JSONArray?.lista(convertir: (JSONObject) -> T): List<T> =
     if (this == null) emptyList() else (0 until length()).map { convertir(getJSONObject(it)) }
@@ -128,7 +144,12 @@ fun eventosDe(json: JSONObject): List<Evento> = json.optJSONArray("eventos").lis
         texto = evento.getString("texto"),
         lado = evento.optString("lado").ifEmpty { null },
         ps = evento.enteroOpcional("ps"),
-        pokemon = evento.optJSONObject("pokemon")?.let(::pokemonCombateDe)
+        pokemon = evento.optJSONObject("pokemon")?.let(::pokemonCombateDe),
+        efecto = evento.optString("efecto").ifEmpty { null },
+        tipo = evento.optString("tipo").ifEmpty { null },
+        danio = evento.enteroOpcional("danio"),
+        efectividad = if (evento.has("efectividad")) evento.getDouble("efectividad") else null,
+        critico = evento.optBoolean("critico")
     )
 }
 

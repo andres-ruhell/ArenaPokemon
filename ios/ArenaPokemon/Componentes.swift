@@ -39,6 +39,13 @@ extension Color {
 }
 
 struct Pokebola: View {
+    // De 0 a 1: cuánto pasa el botón central de blanco a verde.
+    var verde = 0.0
+
+    // Verde blancuzco con un resplandor verde alrededor.
+    private let botonVerde = Color(red: 0.8, green: 0.97, blue: 0.84)
+    private let brilloVerde = Color(red: 0.3, green: 0.85, blue: 0.45)
+
     var body: some View {
         GeometryReader { geometria in
             let lado = min(geometria.size.width, geometria.size.height)
@@ -49,10 +56,13 @@ struct Pokebola: View {
                     .fill(Color.rojoPokebola)
                     .mask(VStack(spacing: 0) { Rectangle(); Color.clear })
                 Rectangle().fill(.black).frame(height: linea)
-                Circle()
-                    .fill(.white)
-                    .frame(width: lado * 0.34)
-                    .overlay(Circle().stroke(.black, lineWidth: linea))
+                ZStack {
+                    Circle().fill(.white)
+                    Circle().fill(botonVerde).opacity(verde)
+                }
+                .frame(width: lado * 0.34)
+                .overlay(Circle().stroke(.black, lineWidth: linea))
+                .shadow(color: brilloVerde.opacity(verde * 0.9), radius: lado * 0.1)
                 Circle().stroke(.black, lineWidth: linea)
             }
             .frame(width: lado, height: lado)

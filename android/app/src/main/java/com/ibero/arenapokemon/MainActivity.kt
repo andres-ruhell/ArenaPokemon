@@ -40,7 +40,7 @@ fun ArenaApp(vm: ArenaViewModel) {
         Crossfade(targetState = pantalla, label = "pantalla") { fase ->
             when (fase) {
                 Fase.INICIO -> InicioPantalla(ui, vm)
-                Fase.BUSCANDO -> BuscandoPantalla(vm)
+                Fase.BUSCANDO -> BuscandoPantalla(ui, vm)
                 Fase.ELIGIENDO, Fase.ESPERANDO_RIVAL -> SeleccionPantalla(ui, vm)
                 Fase.COMBATE -> CombatePantalla(ui, vm)
                 Fase.FIN -> FinPantalla(ui, vm)
