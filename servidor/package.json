@@ -1,0 +1,16 @@
+{
+  "name": "arena-pokemon-servidor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Servidor de la Arena Pokémon: reparte Pokémon al azar desde la PokeAPI y arbitra combates por WebSocket.",
+  "main": "servidor.js",
+  "scripts": {
+    "start": "node servidor.js",
+    "test": "node --test",
+    "bot": "node bot.js"
+  },
+  "dependencies": {
+    "express": "5.2.1",
+    "ws": "8.22.0"
+  }
+}

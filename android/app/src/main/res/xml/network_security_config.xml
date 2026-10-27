@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- El servidor de la Arena usa ws:// sin TLS: 10.0.2.2 desde el emulador
+         o la IP de la Mac en la red local desde un teléfono físico.
+         Android no permite comodines de IP, por eso se habilita en general. -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
