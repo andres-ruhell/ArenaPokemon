@@ -10,27 +10,35 @@ Juego en línea para dos jugadores. El servidor en Node.js consulta la [PokeAPI]
 
 Una partida iPhone contra Android pasa siempre por el mismo servidor, que es quien decide el resultado de cada turno.
 
-## Cómo jugar en esta Mac
+<p align="center">
+  <img src="capturas/ios-3-combate.png" width="230" alt="Combate en iOS">
+  <img src="capturas/android-2-combate.png" width="230" alt="Combate en Android">
+  <img src="capturas/ios-4-fin.png" width="230" alt="Pantalla de victoria en iOS">
+</p>
 
-1. **Enciende el servidor**:
+## Cómo correrlo
+
+1. **Enciende el servidor**. Necesitas [Node.js](https://nodejs.org) 22 o posterior y conexión a internet para la PokeAPI:
 
    ```bash
-   cd /Users/andres/ap_moviles/programas/ArenaPokemon/servidor
-   ./iniciar.command
+   git clone https://github.com/andres-ruhell/ArenaPokemon.git
+   cd ArenaPokemon/servidor
+   npm install
+   npm start
    ```
 
-2. **iOS**: abre `ios/ArenaPokemon.xcodeproj` en Xcode, elige un simulador de iPhone y pulsa **Run ▶**. El servidor por defecto es `127.0.0.1:3000`.
-3. **Android**: abre la carpeta `android/` en Android Studio, elige un emulador y pulsa **Run ▶**. El servidor por defecto es `10.0.2.2:3000`, que es la dirección de la Mac vista desde el emulador.
+2. **iOS**: abre `ios/ArenaPokemon.xcodeproj` en Xcode, elige un simulador de iPhone y pulsa **Run ▶**. El servidor por defecto es `127.0.0.1:3000`. Para instalarla en un iPhone, elige tu cuenta en *Signing & Capabilities*.
+3. **Android**: abre la carpeta `android/` en Android Studio, elige un emulador y pulsa **Run ▶**. El servidor por defecto es `10.0.2.2:3000`, que es la dirección de la computadora vista desde el emulador. Para un celular Android sin compilar nada, descarga `ArenaPokemon.apk` desde [Releases](https://github.com/andres-ruhell/ArenaPokemon/releases/latest) y ábrela; Android te pedirá permiso para instalar apps de origen desconocido.
 4. Escribe tu nombre en cada app y pulsa **Buscar rival**. El servidor empareja a los dos primeros jugadores que estén esperando.
 
 Si solo tienes una app abierta, pulsa **Jugar contra la CPU**: el servidor te pone de rival a su propia CPU al instante. También puedes usar el bot de la terminal, que entra a la fila como si fuera otro jugador:
 
 ```bash
-cd /Users/andres/ap_moviles/programas/ArenaPokemon/servidor
+cd servidor
 node bot.js Misty
 ```
 
-**Teléfonos físicos**: conéctalos a la misma red Wi‑Fi que la Mac y escribe en el campo **Servidor** la IP que muestra la terminal al encender el servidor (por ejemplo `192.168.1.20:3000`).
+**Teléfonos físicos**: conéctalos a la misma red Wi‑Fi que la computadora del servidor y escribe en el campo **Servidor** la IP que muestra la terminal al encender el servidor (por ejemplo `192.168.1.20:3000`).
 
 ## Cómo se juega
 
@@ -132,3 +140,7 @@ cd android && JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/
 ```
 
 La APK queda en `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+## Créditos
+
+Proyecto escolar sin fines de lucro. Los datos, ataques y sprites vienen de la [PokeAPI](https://pokeapi.co). Pokémon es una marca de Nintendo, Game Freak y The Pokémon Company.

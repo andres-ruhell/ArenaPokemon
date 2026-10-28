@@ -2,14 +2,16 @@
 
 Servidor en Node.js con Express y WebSockets (`ws`). Le da a cada jugador 10 Pokémon al azar de la PokeAPI, empareja a dos jugadores y resuelve cada turno del combate. Usa el puerto **3000** por defecto.
 
-## Ejecutar en esta Mac
+## Ejecutar
 
-Las dependencias ya están instaladas en la carpeta local. Para encender el servidor:
+Con Node.js 22 o superior, desde esta carpeta:
 
 ```bash
-cd /Users/andres/ap_moviles/programas/ArenaPokemon/servidor
-./iniciar.command
+npm install
+npm start
 ```
+
+`npm install` solo hace falta la primera vez. En Mac también puedes encenderlo con `./iniciar.command`.
 
 Al arrancar, la terminal muestra la dirección que debe escribir cada app:
 
@@ -65,14 +67,5 @@ Prueban las reglas de `combate.js` y las decisiones de `cpu.js` sin conectarse a
 
 ## Ajustes
 
-- **Puerto**: `PORT=3001 ./iniciar.command`.
+- **Puerto**: `PORT=3001 npm start`.
 - **Solo la primera generación**: en `pokeapi.js` cambia `MAX_ID = 1025` por `151`.
-
-## Ejecutar en otra computadora
-
-Con Node.js 22 o superior:
-
-```bash
-npm install
-npm start
-```
