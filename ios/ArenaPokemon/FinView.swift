@@ -2,8 +2,6 @@ import SwiftUI
 
 struct FinView: View {
     let cliente: ClienteArena
-    @AppStorage("nombre") private var nombre = ""
-    @AppStorage("servidor") private var servidor = "127.0.0.1:3000"
 
     var body: some View {
         VStack(spacing: 24) {
@@ -39,7 +37,7 @@ struct FinView: View {
             Spacer()
             VStack(spacing: 14) {
                 BotonPrincipal(titulo: "Jugar otra vez", icono: "arrow.clockwise") {
-                    cliente.conectar(nombre: nombre, servidor: servidor, contraCPU: cliente.contraCPU)
+                    cliente.jugarOtraVez()
                 }
                 .accessibilityIdentifier("jugarOtraVez")
                 Button("Volver al inicio") { cliente.cancelar() }

@@ -7,6 +7,16 @@ const { crearCPU } = require("./cpu");
 const CANTIDAD_OPCIONES = 10;
 const TAMANO_EQUIPO = 3;
 const LARGO_NOMBRE = 16;
+// Si en este tiempo no llega otro jugador, el que espera juega contra la CPU.
+const ESPERA_RIVAL_MS = 10000;
+// Tiempo para elegir cada movimiento, contado desde que la app termina de narrar el turno.
+// Quien no elige a tiempo ataca al azar.
+const TIEMPO_TURNO_MS = 10000;
+// Pausas con que las apps narran cada evento (las mismas en iOS y Android).
+const PAUSA_ATAQUE_MS = 450;
+const PAUSA_EVENTO_MS = 900;
+// Holgura para la red antes de elegir por el jugador.
+const MARGEN_MS = 1500;
 
 const enEspera = [];
 const partidas = new Set();
@@ -64,22 +74,41 @@ function unirse(socket, nombre) {
   salir(socket);
   socket.nombre = limpiarNombre(nombre);
   enEspera.push(socket);
-  enviar(socket, { tipo: "esperando" });
+  enviar(socket, { tipo: "esperando", segundos: ESPERA_RIVAL_MS / 1000 });
+  socket.esperaCPU = setTimeout(() => {
+    sacarDeLaFila(socket);
+    iniciarContraCPU(socket).catch(console.error);
+  }, ESPERA_RIVAL_MS);
   emparejar();
 }
 
-// Sin fila de espera: el rival es la CPU del servidor, que contesta por el mismo protocolo.
 function jugarContraCPU(socket, nombre) {
   salir(socket);
   socket.nombre = limpiarNombre(nombre);
+  return iniciarContraCPU(socket);
+}
+
+// Sin fila de espera: el rival es la CPU del servidor, que contesta por el mismo protocolo.
+function iniciarContraCPU(socket) {
   const cpu = crearCPU((jugador, mensaje) => manejar(jugador, mensaje).catch(console.error));
   return iniciarPartida([socket, cpu]);
+}
+
+function sacarDeLaFila(socket) {
+  clearTimeout(socket.esperaCPU);
+  socket.esperaCPU = null;
+  const posicion = enEspera.indexOf(socket);
+  if (posicion !== -1) {
+    enEspera.splice(posicion, 1);
+  }
 }
 
 // Junta a los dos primeros de la fila.
 async function emparejar() {
   while (enEspera.length >= 2) {
-    await iniciarPartida(enEspera.splice(0, 2));
+    const pareja = enEspera.slice(0, 2);
+    pareja.forEach(sacarDeLaFila);
+    await iniciarPartida(pareja);
   }
 }
 
@@ -174,6 +203,29 @@ async function elegirEquipo(socket, ids) {
   partida.turno = 1;
   const eventos = [{ texto: "¡Comienza el combate!" }, entrada(partida.jugadores, 0), entrada(partida.jugadores, 1)];
   enviarATodos(partida, "inicioCombate", eventos);
+  iniciarReloj(partida, eventos);
+}
+
+// El reloj del turno empieza a contar cuando las apps terminan de narrar los eventos.
+function iniciarReloj(partida, eventos) {
+  clearTimeout(partida.reloj);
+  const narracion = eventos.reduce((total, e) => total + (e.efecto === "ataque" ? PAUSA_ATAQUE_MS : PAUSA_EVENTO_MS), 0);
+  partida.reloj = setTimeout(() => agotarTiempo(partida), narracion + TIEMPO_TURNO_MS + MARGEN_MS);
+}
+
+function agotarTiempo(partida) {
+  if (partida.fase !== "combate") {
+    return;
+  }
+  const avisos = [];
+  for (const jugador of partida.jugadores) {
+    if (!jugador.accion) {
+      const pokemon = jugador.equipo[jugador.activo];
+      jugador.accion = { accion: "atacar", movimiento: Math.floor(Math.random() * pokemon.movimientos.length) };
+      avisos.push({ texto: `${jugador.nombre} tardó demasiado: se eligió un ataque al azar.` });
+    }
+  }
+  resolver(partida, avisos);
 }
 
 function recibirAccion(socket, mensaje) {
@@ -208,14 +260,22 @@ function recibirAccion(socket, mensaje) {
   if (!rival.accion) {
     return enviar(socket, { tipo: "accionRecibida" });
   }
+  resolver(partida);
+}
 
+// Ya están las dos acciones: resuelve el turno. `avisos` va antes de los eventos del turno.
+function resolver(partida, avisos = []) {
+  clearTimeout(partida.reloj);
   const acciones = partida.jugadores.map((j) => j.accion);
   partida.jugadores.forEach((j) => (j.accion = null));
-  const { eventos, ganador } = resolverTurno(partida.jugadores, acciones, pokeapi.obtenerTablaTipos());
+  const resultado = resolverTurno(partida.jugadores, acciones, pokeapi.obtenerTablaTipos());
+  const eventos = [...avisos, ...resultado.eventos];
+  const { ganador } = resultado;
 
   if (ganador === null) {
     partida.turno += 1;
     enviarATodos(partida, "turno", eventos);
+    iniciarReloj(partida, eventos);
   } else {
     enviarATodos(partida, "fin", eventos, partida.jugadores[ganador].nombre);
     console.log(`Fin de partida: ganó ${partida.jugadores[ganador].nombre}`);
@@ -225,10 +285,7 @@ function recibirAccion(socket, mensaje) {
 
 // Si alguien se va a media partida, el rival gana.
 function salir(socket) {
-  const posicion = enEspera.indexOf(socket);
-  if (posicion !== -1) {
-    enEspera.splice(posicion, 1);
-  }
+  sacarDeLaFila(socket);
 
   const partida = socket.partida;
   if (!partida || partida.fase === "fin") {
@@ -246,6 +303,7 @@ function salir(socket) {
 }
 
 function terminar(partida) {
+  clearTimeout(partida.reloj);
   partida.fase = "fin";
   partidas.delete(partida);
   for (const jugador of partida.jugadores) {
@@ -260,6 +318,8 @@ function enviarATodos(partida, tipo, eventos, ganador) {
     const mensaje = { tipo, eventos: eventosPara(partida, eventos, i), estado: estadoPara(partida, i) };
     if (ganador !== undefined) {
       mensaje.ganador = ganador;
+    } else {
+      mensaje.tiempo = TIEMPO_TURNO_MS / 1000;
     }
     enviar(jugador.socket, mensaje);
   });
@@ -328,4 +388,4 @@ function resumenEstado() {
   return { jugadoresEnEspera: enEspera.length, partidasActivas: partidas.size };
 }
 
-module.exports = { conectar, resumenEstado };
+module.exports = { conectar, resumenEstado, ESPERA_RIVAL_MS, TIEMPO_TURNO_MS, PAUSA_EVENTO_MS, MARGEN_MS };

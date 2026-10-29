@@ -12,6 +12,8 @@ final class ClienteArena {
 
     private(set) var fase = Fase.inicio
     private(set) var contraCPU = false
+    // Cuándo el servidor pone a la CPU de rival si no llega otro jugador.
+    private(set) var esperaHasta: Date?
     private(set) var miNombre = ""
     private(set) var rival = ""
     private(set) var opciones: [PokemonResumen] = []
@@ -31,37 +33,47 @@ final class ClienteArena {
     private(set) var impactoRival: Impacto?
     @ObservationIgnored private var impactos = 0
     private(set) var accionEnviada = false
+    // Hasta cuándo hay para elegir el movimiento; después el servidor ataca al azar.
+    private(set) var turnoHasta: Date?
+    private(set) var turnoAgotado = false
+    @ObservationIgnored private var relojTurno: Task<Void, Never>?
 
     private(set) var ganador: String?
     private(set) var motivoFin = ""
     var mensajeError: String?
 
     @ObservationIgnored private var tarea: URLSessionWebSocketTask?
+    @ObservationIgnored private var ultimoServidor = ""
     private let pausaEvento = Duration.milliseconds(900)
     // Tras la embestida el golpe llega enseguida.
     private let pausaAtaque = Duration.milliseconds(450)
 
     var gane: Bool { ganador == miNombre }
-    var puedeActuar: Bool { fase == .combate && !narrando && !accionEnviada }
+    var puedeActuar: Bool { fase == .combate && !narrando && !accionEnviada && !turnoAgotado }
 
-    // Con `contraCPU` el servidor pone de rival a su CPU en vez de esperar a otro jugador.
+    // `servidor` es "ip:puerto". Con `contraCPU` el servidor pone de rival a su CPU en vez de esperar a otro jugador.
     func conectar(nombre: String, servidor: String, contraCPU: Bool = false) {
         desconectar()
         mensajeError = nil
-        let direccion = servidor.trimmingCharacters(in: .whitespaces)
-        guard !direccion.isEmpty, let url = URL(string: "ws://\(direccion)/arena") else {
-            mensajeError = "Escribe la dirección del servidor, por ejemplo 127.0.0.1:3000."
+        guard let url = URL(string: "ws://\(servidor)/arena") else {
+            mensajeError = "No se encontró el servidor."
             return
         }
 
         let tarea = URLSession.shared.webSocketTask(with: url)
         self.tarea = tarea
         tarea.resume()
+        ultimoServidor = servidor
         miNombre = nombre
         self.contraCPU = contraCPU
+        esperaHasta = nil
         fase = .buscando
         enviar(["tipo": contraCPU ? "jugarCPU" : "unirse", "nombre": nombre])
         Task { await escuchar(tarea) }
+    }
+
+    func jugarOtraVez() {
+        conectar(nombre: miNombre, servidor: ultimoServidor, contraCPU: contraCPU)
     }
 
     func cancelar() {
@@ -85,6 +97,7 @@ final class ClienteArena {
     }
 
     private func desconectar() {
+        detenerReloj()
         let anterior = tarea
         tarea = nil
         anterior?.cancel(with: .goingAway, reason: nil)
@@ -121,6 +134,9 @@ final class ClienteArena {
     private func procesar(_ mensaje: MensajeServidor) async {
         switch mensaje.tipo {
         case "esperando":
+            if let segundos = mensaje.segundos {
+                esperaHasta = .now.addingTimeInterval(TimeInterval(segundos))
+            }
             fase = .buscando
         case "partida":
             miNombre = mensaje.nombre ?? miNombre
@@ -137,12 +153,14 @@ final class ClienteArena {
             preparandoEquipo = false
             fase = .esperandoRival
         case "inicioCombate", "turno":
+            detenerReloj()
             preparandoEquipo = false
             fase = .combate
             await narrar(mensaje.eventos ?? [])
             if let estado = mensaje.estado {
                 aplicar(estado)
             }
+            iniciarReloj(segundos: mensaje.tiempo)
         case "fin":
             await narrar(mensaje.eventos ?? [])
             if let estado = mensaje.estado {
@@ -218,6 +236,25 @@ final class ClienteArena {
             impactoRival = impacto
             if impacto.tipo != nil { golpesRival += 1 }
         }
+    }
+
+    // El reloj empieza cuando termina la narración, igual que en el servidor.
+    private func iniciarReloj(segundos: Int?) {
+        detenerReloj()
+        guard let segundos else { return }
+        turnoHasta = .now.addingTimeInterval(TimeInterval(segundos))
+        relojTurno = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(segundos))
+            guard !Task.isCancelled else { return }
+            self?.turnoAgotado = true
+        }
+    }
+
+    private func detenerReloj() {
+        relojTurno?.cancel()
+        relojTurno = nil
+        turnoHasta = nil
+        turnoAgotado = false
     }
 
     private func aplicar(_ estado: EstadoCombate) {

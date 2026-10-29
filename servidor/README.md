@@ -20,7 +20,10 @@ Arena Pokémon en http://localhost:3000
   Simulador de iOS:     127.0.0.1:3000
   Emulador de Android:  10.0.2.2:3000
   Teléfono en tu red:   192.168.1.20:3000
+  Las apps en tu red lo encuentran solas (Bonjour).
 ```
+
+El servidor se anuncia en la red local como `_arenapokemon._tcp` (paquete `bonjour-service`), así que las apps lo encuentran solas, sin escribir ninguna dirección. El simulador de iOS y el emulador de Android, si no lo ven en la red, usan el de la computadora en la que corren.
 
 Para revisarlo en el navegador:
 
@@ -37,7 +40,7 @@ Para detener el servidor, presiona `Control + C` en su terminal.
 node bot.js Misty
 ```
 
-Para ver una partida completa sin apps, abre dos terminales y ejecuta `node bot.js Ash` en una y `node bot.js Misty` en la otra.
+Para ver una partida completa sin apps, abre dos terminales y ejecuta `node bot.js Ash` en una y `node bot.js Misty` en la otra, con menos de 10 segundos de diferencia: si alguien espera más de 10 s sin rival, el servidor lo pone contra la CPU.
 
 ## Contra la CPU
 
@@ -55,12 +58,12 @@ node bot.js Ash --cpu
 node --test
 ```
 
-Prueban las reglas de `combate.js` y las decisiones de `cpu.js` sin conectarse a internet.
+Prueban las reglas de `combate.js`, las decisiones de `cpu.js` y los dos relojes de 10 s de `arena.js` (esperar rival y elegir movimiento), sin conectarse a internet.
 
 ## Archivos
 
-- `servidor.js`: Express, el WebSocket en `/arena` y un ping cada 30 s para detectar apps desconectadas.
-- `arena.js`: fila de espera, partidas y validación de cada mensaje (ids de Pokémon, ataques, cambios y una sola acción por turno).
+- `servidor.js`: Express, el WebSocket en `/arena`, un ping cada 30 s para detectar apps desconectadas y el anuncio Bonjour.
+- `arena.js`: fila de espera (con la CPU como rival tras 10 s), partidas, el reloj de 10 s por turno (quien no elige ataca al azar) y validación de cada mensaje (ids de Pokémon, ataques, cambios y una sola acción por turno).
 - `cpu.js`: la CPU. Elige un equipo fuerte y casi siempre usa su ataque más efectivo.
 - `combate.js`: stats al nivel 50, fórmula de daño, efectividad de tipos y orden del turno.
 - `pokeapi.js`: consultas a `pokeapi.co` con caché en memoria, para que cada Pokémon, ataque y tipo se pida una sola vez.
@@ -69,3 +72,5 @@ Prueban las reglas de `combate.js` y las decisiones de `cpu.js` sin conectarse a
 
 - **Puerto**: `PORT=3001 npm start`.
 - **Solo la primera generación**: en `pokeapi.js` cambia `MAX_ID = 1025` por `151`.
+- **Espera antes de la CPU**: en `arena.js` cambia `ESPERA_RIVAL_MS = 10000`.
+- **Tiempo por turno**: en `arena.js` cambia `TIEMPO_TURNO_MS = 10000`.

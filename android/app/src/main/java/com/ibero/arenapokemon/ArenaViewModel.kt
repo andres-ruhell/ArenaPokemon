@@ -24,6 +24,8 @@ enum class Fase { INICIO, BUSCANDO, ELIGIENDO, ESPERANDO_RIVAL, COMBATE, FIN }
 data class EstadoUi(
     val fase: Fase = Fase.INICIO,
     val contraCPU: Boolean = false,
+    // Cuándo (System.currentTimeMillis) el servidor pone a la CPU de rival si no llega otro jugador.
+    val esperaHasta: Long? = null,
     val miNombre: String = "",
     val rival: String = "",
     val opciones: List<PokemonResumen> = emptyList(),
@@ -41,12 +43,15 @@ data class EstadoUi(
     val impactoMio: Impacto? = null,
     val impactoRival: Impacto? = null,
     val accionEnviada: Boolean = false,
+    // Hasta cuándo (System.currentTimeMillis) hay para elegir el movimiento; después el servidor ataca al azar.
+    val turnoHasta: Long? = null,
+    val turnoAgotado: Boolean = false,
     val ganador: String? = null,
     val motivoFin: String = "",
     val mensajeError: String? = null
 ) {
     val gane get() = ganador == miNombre
-    val puedeActuar get() = fase == Fase.COMBATE && !narrando && !accionEnviada
+    val puedeActuar get() = fase == Fase.COMBATE && !narrando && !accionEnviada && !turnoAgotado
 }
 
 // Un solo cliente HTTP para el WebSocket y las imágenes.
@@ -68,6 +73,7 @@ class ArenaViewModel : ViewModel() {
 
     private var socket: WebSocket? = null
     private var lector: Job? = null
+    private var relojTurno: Job? = null
     private var ultimoNombre = ""
     private var ultimoServidor = ""
     private var impactos = 0
@@ -79,12 +85,14 @@ class ArenaViewModel : ViewModel() {
         val peticion = try {
             Request.Builder().url("ws://$direccion/arena").build()
         } catch (error: IllegalArgumentException) {
-            _ui.update { it.copy(mensajeError = "Escribe la dirección del servidor, por ejemplo 10.0.2.2:3000.") }
+            _ui.update { it.copy(mensajeError = "No se encontró el servidor.") }
             return
         }
         ultimoNombre = nombre
         ultimoServidor = direccion
-        _ui.update { it.copy(fase = Fase.BUSCANDO, contraCPU = contraCPU, miNombre = nombre, mensajeError = null) }
+        _ui.update {
+            it.copy(fase = Fase.BUSCANDO, contraCPU = contraCPU, esperaHasta = null, miNombre = nombre, mensajeError = null)
+        }
 
         // OkHttp avisa en su propio hilo; el canal entrega los mensajes en orden al hilo principal.
         val canal = Channel<Entrada>(Channel.UNLIMITED)
@@ -145,6 +153,7 @@ class ArenaViewModel : ViewModel() {
     }
 
     private fun desconectar() {
+        detenerReloj()
         lector?.cancel()
         lector = null
         socket?.close(1000, null)
@@ -166,7 +175,11 @@ class ArenaViewModel : ViewModel() {
         }
 
         when (json.optString("tipo")) {
-            "esperando" -> _ui.update { it.copy(fase = Fase.BUSCANDO) }
+            "esperando" -> {
+                val segundos = json.optInt("segundos", 0)
+                val hasta = if (segundos > 0) System.currentTimeMillis() + segundos * 1000L else null
+                _ui.update { it.copy(fase = Fase.BUSCANDO, esperaHasta = hasta) }
+            }
             "partida" -> _ui.update {
                 it.copy(
                     fase = Fase.ELIGIENDO,
@@ -184,9 +197,11 @@ class ArenaViewModel : ViewModel() {
             }
             "esperandoRival" -> _ui.update { it.copy(fase = Fase.ESPERANDO_RIVAL, preparandoEquipo = false) }
             "inicioCombate", "turno" -> {
+                detenerReloj()
                 _ui.update { it.copy(fase = Fase.COMBATE, preparandoEquipo = false) }
                 narrar(eventosDe(json))
                 json.optJSONObject("estado")?.let { aplicar(estadoCombateDe(it)) }
+                iniciarReloj(json.optInt("tiempo", 0))
             }
             "fin" -> {
                 val eventos = eventosDe(json)
@@ -269,6 +284,23 @@ class ArenaViewModel : ViewModel() {
     private fun nuevoImpacto(texto: String, estilo: EstiloImpacto, tipo: String?): Impacto {
         impactos += 1
         return Impacto(impactos, texto, estilo, tipo)
+    }
+
+    // El reloj empieza cuando termina la narración, igual que en el servidor.
+    private fun iniciarReloj(segundos: Int) {
+        detenerReloj()
+        if (segundos <= 0) return
+        _ui.update { it.copy(turnoHasta = System.currentTimeMillis() + segundos * 1000L) }
+        relojTurno = viewModelScope.launch {
+            delay(segundos * 1000L)
+            _ui.update { it.copy(turnoAgotado = true) }
+        }
+    }
+
+    private fun detenerReloj() {
+        relojTurno?.cancel()
+        relojTurno = null
+        _ui.update { it.copy(turnoHasta = null, turnoAgotado = false) }
     }
 
     private fun aplicar(estado: EstadoCombate) = _ui.update {

@@ -103,4 +103,6 @@ struct MensajeServidor: Decodable {
     let eventos: [Evento]?
     let ganador: String?
     let mensaje: String?
+    let segundos: Int?
+    let tiempo: Int?
 }

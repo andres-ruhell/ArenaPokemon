@@ -15,7 +15,11 @@
             </dict>
         </dict>
     </dict>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_arenapokemon._tcp</string>
+    </array>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>La app se conecta al servidor de la Arena Pokémon en tu red local.</string>
+    <string>La app busca y se conecta al servidor de la Arena Pokémon en tu red local.</string>
 </dict>
 </plist>

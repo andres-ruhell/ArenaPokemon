@@ -1,6 +1,7 @@
 package com.ibero.arenapokemon
 
 import android.content.Context
+import android.os.Build
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -43,8 +44,10 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,11 +77,11 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -86,25 +89,41 @@ import kotlin.math.exp
 import kotlin.math.pow
 import kotlin.math.sin
 
-// El emulador de Android llega al servidor de la Mac por 10.0.2.2.
+// El emulador no ve la red de la computadora: llega a su servidor por 10.0.2.2.
 private const val SERVIDOR_EMULADOR = "10.0.2.2:3000"
+private val esEmulador = Build.FINGERPRINT.contains("generic") ||
+    Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish" || Build.PRODUCT.contains("sdk")
 private const val TAMANO_EQUIPO = 3
+// Tras este tiempo sin encontrar el servidor en la red, se avisa.
+private const val ESPERA_BUSQUEDA = 5000L
+private val VerdeAviso = Color(0xFF34C759)
 
 @Composable
 fun InicioPantalla(ui: EstadoUi, vm: ArenaViewModel) {
     val contexto = LocalContext.current
     val preferencias = remember { contexto.getSharedPreferences("arena", Context.MODE_PRIVATE) }
     var nombre by rememberSaveable { mutableStateOf(preferencias.getString("nombre", "") ?: "") }
-    var servidor by rememberSaveable {
-        mutableStateOf(preferencias.getString("servidor", SERVIDOR_EMULADOR) ?: SERVIDOR_EMULADOR)
-    }
     val foco = LocalFocusManager.current
+
+    // El servidor que se anuncia en la red. Sin él, el emulador usa el de la computadora en la que corre.
+    var encontrado by remember { mutableStateOf<String?>(null) }
+    var sinRespuesta by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) {
+        val buscador = BuscadorServidor(contexto) { encontrado = it }
+        buscador.iniciar()
+        onDispose { buscador.detener() }
+    }
+    LaunchedEffect(Unit) {
+        delay(ESPERA_BUSQUEDA)
+        sinRespuesta = true
+    }
+    val servidor = encontrado ?: SERVIDOR_EMULADOR.takeIf { esEmulador }
 
     fun buscar(contraCPU: Boolean = false) {
         foco.clearFocus()
         val limpio = nombre.trim()
-        if (limpio.isEmpty()) return
-        preferencias.edit().putString("nombre", limpio).putString("servidor", servidor.trim()).apply()
+        if (limpio.isEmpty() || servidor == null) return
+        preferencias.edit().putString("nombre", limpio).apply()
         vm.conectar(limpio, servidor, contraCPU)
     }
 
@@ -127,7 +146,7 @@ fun InicioPantalla(ui: EstadoUi, vm: ArenaViewModel) {
             )
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             CampoTexto(
                 titulo = "Tu nombre de entrenador",
                 valor = nombre,
@@ -136,36 +155,38 @@ fun InicioPantalla(ui: EstadoUi, vm: ArenaViewModel) {
                 opciones = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Words,
                     autoCorrectEnabled = false,
-                    imeAction = ImeAction.Next
-                )
-            )
-            CampoTexto(
-                titulo = "Servidor",
-                valor = servidor,
-                ejemplo = SERVIDOR_EMULADOR,
-                onCambio = { servidor = it },
-                opciones = KeyboardOptions(
-                    autoCorrectEnabled = false,
-                    keyboardType = KeyboardType.Uri,
-                    imeAction = ImeAction.Go
+                    imeAction = ImeAction.Done
                 ),
-                acciones = KeyboardActions(onGo = { buscar() })
+                acciones = KeyboardActions(onDone = { foco.clearFocus() })
             )
+            EstadoServidor(encontrado != null, servidor != null, sinRespuesta)
         }
 
         ui.mensajeError?.let { error ->
             Text("⚠ $error", color = Color(0xFFFF3B30), fontSize = 14.sp)
         }
 
+        val habilitado = nombre.isNotBlank() && servidor != null
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            BotonPrincipal(titulo = "⚡ Buscar rival", onClick = { buscar() }, habilitado = nombre.isNotBlank())
+            BotonPrincipal(titulo = "⚡ Buscar rival", onClick = { buscar() }, habilitado = habilitado)
             BotonSecundario(
                 titulo = "🤖 Jugar contra la CPU",
                 onClick = { buscar(contraCPU = true) },
-                habilitado = nombre.isNotBlank()
+                habilitado = habilitado
             )
         }
     }
+}
+
+@Composable
+private fun EstadoServidor(encontrado: Boolean, hayServidor: Boolean, sinRespuesta: Boolean) {
+    val (texto, color) = when {
+        encontrado -> "✓ Servidor encontrado en tu red" to VerdeAviso
+        !sinRespuesta -> "Buscando el servidor en tu red…" to TextoSecundario
+        hayServidor -> "Usando el servidor de esta computadora" to TextoSecundario
+        else -> "No encontré el servidor. Enciéndelo y conéctate a la misma Wi‑Fi." to Color(0xFFFF9500)
+    }
+    Text(texto, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = color, modifier = Modifier.padding(start = 4.dp))
 }
 
 @Composable
@@ -228,9 +249,22 @@ fun BuscandoPantalla(ui: EstadoUi, vm: ArenaViewModel) {
             fontWeight = FontWeight.Bold
         )
         Spacer(Modifier.height(8.dp))
+        val limite = ui.esperaHasta
+        var ahora by remember { mutableLongStateOf(System.currentTimeMillis()) }
+        LaunchedEffect(limite) {
+            while (limite != null && ahora < limite) {
+                delay(250)
+                ahora = System.currentTimeMillis()
+            }
+        }
+        val restantes = limite?.let { ((it - ahora + 999) / 1000).coerceAtLeast(0) }
         Text(
-            if (ui.contraCPU) "El servidor está eligiendo los Pokémon de tu rival."
-            else "La partida empieza cuando otro entrenador se conecte.",
+            when {
+                ui.contraCPU -> "El servidor está eligiendo los Pokémon de tu rival."
+                restantes == null -> "La partida empieza cuando otro entrenador se conecte."
+                restantes > 0 -> "Si nadie llega en $restantes s, juegas contra la CPU."
+                else -> "Nadie llegó: preparando a la CPU…"
+            },
             fontSize = 15.sp,
             color = TextoSecundario,
             textAlign = TextAlign.Center

@@ -27,23 +27,23 @@ Una partida iPhone contra Android pasa siempre por el mismo servidor, que es qui
    npm start
    ```
 
-2. **iOS**: abre `ios/ArenaPokemon.xcodeproj` en Xcode, elige un simulador de iPhone y pulsa **Run ▶**. El servidor por defecto es `127.0.0.1:3000`. Para instalarla en un iPhone, elige tu cuenta en *Signing & Capabilities*.
-3. **Android**: abre la carpeta `android/` en Android Studio, elige un emulador y pulsa **Run ▶**. El servidor por defecto es `10.0.2.2:3000`, que es la dirección de la computadora vista desde el emulador. Para un celular Android sin compilar nada, descarga `ArenaPokemon.apk` desde [Releases](https://github.com/andres-ruhell/ArenaPokemon/releases/latest) y ábrela; Android te pedirá permiso para instalar apps de origen desconocido.
-4. Escribe tu nombre en cada app y pulsa **Buscar rival**. El servidor empareja a los dos primeros jugadores que estén esperando.
+2. **iOS**: abre `ios/ArenaPokemon.xcodeproj` en Xcode, elige un simulador de iPhone y pulsa **Run ▶**. Para instalarla en un iPhone, elige tu cuenta en *Signing & Capabilities*.
+3. **Android**: abre la carpeta `android/` en Android Studio, elige un emulador y pulsa **Run ▶**. Para un celular Android sin compilar nada, descarga `ArenaPokemon.apk` desde [Releases](https://github.com/andres-ruhell/ArenaPokemon/releases/latest) y ábrela; Android te pedirá permiso para instalar apps de origen desconocido.
+4. Escribe tu nombre en cada app y pulsa **Buscar rival**. El servidor empareja a los dos primeros jugadores que estén esperando. Si en **10 segundos** no llega nadie, te pone de rival a su CPU; la app muestra la cuenta atrás.
 
-Si solo tienes una app abierta, pulsa **Jugar contra la CPU**: el servidor te pone de rival a su propia CPU al instante. También puedes usar el bot de la terminal, que entra a la fila como si fuera otro jugador:
+Si solo tienes una app abierta, pulsa **Jugar contra la CPU** para empezar sin esperar. También puedes usar el bot de la terminal, que entra a la fila como si fuera otro jugador:
 
 ```bash
 cd servidor
 node bot.js Misty
 ```
 
-**Teléfonos físicos**: conéctalos a la misma red Wi‑Fi que la computadora del servidor y escribe en el campo **Servidor** la IP que muestra la terminal al encender el servidor (por ejemplo `192.168.1.20:3000`).
+**El servidor se conecta solo**: no hay que escribir ninguna dirección. El servidor se anuncia en la red con Bonjour (`_arenapokemon._tcp`) y las apps lo encuentran con su IP actual; aparece "Servidor encontrado en tu red". En teléfonos físicos basta con estar en la misma Wi‑Fi que la computadora del servidor (en iPhone, acepta el permiso de red local). El simulador de iOS y el emulador de Android usan el servidor de la computadora en la que corren (`127.0.0.1:3000` y `10.0.2.2:3000`) si no lo ven en la red. Algunas redes de escuelas o cafés no dejan que los dispositivos se vean entre sí; ahí conviene usar el hotspot de un celular.
 
 ## Cómo se juega
 
 1. **Elegir equipo**: cada jugador recibe sus propios 10 Pokémon al azar (de los 1025 que hay) y toca 3. Al entrar a esta pantalla, una Pokébola pequeña aparece al centro y se sacude tres veces, como al atrapar un Pokémon. Luego baja hasta asomarse en el borde inferior (se ven sus 3/5 de arriba) y su botón pasa de blanco a un verde blancuzco con un resplandor. Los 10 Pokémon salen de detrás de ella en orden: suben, se abren en curva hacia su lugar y se acomodan con un pequeño rebote. Al final la Pokébola se esconde y sube el botón **¡Al combate!** (alrededor de 3 s). Ambas apps usan los mismos tiempos y curvas. En iOS se omite si está activado *Reducir movimiento*.
-2. **Combate**: cada turno, los dos eligen a la vez entre atacar con uno de los 4 ataques del Pokémon activo o cambiar de Pokémon. Cuando ambos eligieron, el servidor resuelve el turno y las apps lo narran.
+2. **Combate**: cada turno, los dos eligen a la vez entre atacar con uno de los 4 ataques del Pokémon activo o cambiar de Pokémon. Cuando ambos eligieron, el servidor resuelve el turno y las apps lo narran. Cada jugador tiene **10 segundos** para elegir, contados desde que termina la narración; la app muestra la cuenta atrás y, si se acaba, el servidor usa un ataque al azar por él ("Misty tardó demasiado: se eligió un ataque al azar.").
 3. **Fin**: pierde quien se queda sin Pokémon. Si un jugador abandona o se desconecta, gana el otro.
 
 **Contra la CPU** (`servidor/cpu.js`): la CPU elige 3 Pokémon al azar entre los 5 de sus opciones con más stats. En cada turno calcula qué ataque haría más daño (poder × precisión × STAB × efectividad de tipos contra tu Pokémon) y lo usa el 75 % de las veces; el resto elige al azar, para que se le pueda ganar. Si ninguno de sus ataques afecta a tu Pokémon, cambia a un compañero que sí pueda.
@@ -68,14 +68,14 @@ La conexión es `ws://<servidor>:3000/arena` y todos los mensajes son JSON con u
 |---|---|---|
 | app → servidor | `unirse` | `{nombre}`: entra a la fila de espera |
 | app → servidor | `jugarCPU` | `{nombre}`: partida inmediata contra la CPU del servidor |
-| servidor → app | `esperando` | todavía no hay rival |
+| servidor → app | `esperando` | `{segundos}`: todavía no hay rival; si nadie llega en ese tiempo, el rival es la CPU |
 | servidor → app | `partida` | `{nombre, rival, opciones: [10 Pokémon]}` |
 | app → servidor | `elegirEquipo` | `{ids: [3 ids]}` |
 | servidor → app | `esperandoRival` | tu equipo está listo y falta el del rival |
-| servidor → app | `inicioCombate` | `{eventos, estado}` |
+| servidor → app | `inicioCombate` | `{eventos, estado, tiempo}`: `tiempo` son los segundos para elegir, desde que termina la narración |
 | app → servidor | `accion` | `{accion: "atacar", movimiento: 0-3}` o `{accion: "cambiar", indice: 0-2}` |
 | servidor → app | `accionRecibida` | se guardó tu acción y se espera la del rival |
-| servidor → app | `turno` | `{eventos, estado}` |
+| servidor → app | `turno` | `{eventos, estado, tiempo}` |
 | servidor → app | `fin` | `{ganador, eventos, estado}` |
 | servidor → app | `error` | `{mensaje}` |
 
@@ -99,7 +99,7 @@ Las apps narran cada turno evento por evento. En cada ataque:
 ## Código
 
 - **Servidor**:
-  - `servidor.js`: Express y WebSocket.
+  - `servidor.js`: Express, WebSocket y el anuncio Bonjour (`bonjour-service`).
   - `arena.js`: emparejamiento, partidas y validación de mensajes.
   - `combate.js`: reglas del combate.
   - `pokeapi.js`: consultas a la PokeAPI con caché.
@@ -108,18 +108,20 @@ Las apps narran cada turno evento por evento. En cada ataque:
 - **iOS** (`ios/ArenaPokemon/`):
   - `ClienteArena.swift`: `URLSessionWebSocketTask`, el estado de la partida y la narración.
   - `Modelos.swift`: los datos del protocolo.
-  - Las vistas: `InicioView`, `BuscandoView`, `SeleccionView`, `CombateView` y `FinView`.
+  - Las vistas: `InicioView`, `BuscandoView`, `SeleccionView`, `CombateView` y `FinView`. `InicioView.swift` también tiene `BuscadorServidor`, que encuentra el servidor con `NWBrowser`.
 - **Android** (`android/app/src/main/java/com/ibero/arenapokemon/`):
   - `ArenaViewModel.kt`: WebSocket con OkHttp y el estado de la partida.
   - `Modelos.kt`: los datos del protocolo, leídos con `org.json`.
   - `Pantallas.kt` y `CombatePantalla.kt`: las pantallas en Compose.
   - `Componentes.kt`: barra de PS, colores de tipo y carga de sprites con OkHttp.
+  - `BuscadorServidor.kt`: encuentra el servidor en la red con `NsdManager`.
 
 ## Pruebas realizadas
 
-- `cd servidor && node --test`: 14 pruebas.
+- `cd servidor && node --test`: 20 pruebas.
   - 9 del combate: fórmula de daño, efectividad, inmunidad, orden por velocidad, cambio antes de ataque, fallo por precisión, cambio automático, ganador y los datos que las apps usan para animar.
   - 5 de la CPU: equipo entre los más fuertes, ataque más efectivo, precisión, cambio cuando nada afecta y errores al azar.
+  - 6 de la arena: la CPU entra a los 10 s si nadie llega, dos jugadores a tiempo se enfrentan entre sí, quien sale antes no recibe partida, cada turno avisa su tiempo, quien no elige a tiempo ataca al azar y un turno elegido a tiempo se resuelve sin esperar.
 - **Dos bots** (`node bot.js Ash` y `node bot.js Misty`): partida completa de 18 turnos contra la PokeAPI real.
 - **Contra la CPU**: partidas completas desde el bot (`node bot.js Ash --cpu`), desde iOS (ganó la CPU) y desde Android (ganó el jugador). "Jugar otra vez" repite el modo, y abandonar a media partida la cierra sin errores.
 - **iOS** en el simulador de iPhone 18 Pro (iOS 27): partida completa contra el bot, con cambio manual, cambio automático e inmunidad de tipo, y victoria.

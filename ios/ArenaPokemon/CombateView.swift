@@ -72,6 +72,7 @@ struct CombateView: View {
     private var textoActual: String {
         if cliente.narrando { return cliente.narracion }
         if cliente.accionEnviada { return "Esperando a \(cliente.rival)…" }
+        if cliente.turnoAgotado { return "¡Se acabó el tiempo! Atacarás al azar." }
         return "¿Qué hará \(cliente.miPokemon?.nombre ?? "tu Pokémon")?"
     }
 
@@ -84,7 +85,9 @@ struct CombateView: View {
                 .animation(.easeInOut(duration: 0.2), value: textoActual)
                 .accessibilityIdentifier("narracion")
             Spacer(minLength: 0)
-            if cliente.accionEnviada && !cliente.narrando {
+            if !cliente.narrando, let limite = cliente.turnoHasta, !cliente.turnoAgotado {
+                RelojTurno(limite: limite)
+            } else if cliente.accionEnviada && !cliente.narrando {
                 ProgressView().tint(.white)
             }
         }
@@ -385,5 +388,23 @@ private struct MiembroEquipo: View {
                 .stroke(activo ? Color.rojoPokebola : .clear, lineWidth: 2)
         }
         .opacity(pokemon.debilitado ? 0.45 : 1)
+    }
+}
+
+// Segundos que quedan para elegir el movimiento; amarillo en los últimos 3.
+private struct RelojTurno: View {
+    let limite: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.25)) { contexto in
+            let restantes = max(0, Int(limite.timeIntervalSince(contexto.date).rounded(.up)))
+            Text("\(restantes)")
+                .font(.system(size: 16, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(restantes <= 3 ? Color.yellow : .white)
+                .frame(width: 36, height: 36)
+                .background(.white.opacity(0.14), in: Circle())
+                .accessibilityLabel("\(restantes) segundos para elegir")
+        }
     }
 }

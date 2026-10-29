@@ -40,7 +40,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -58,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val Cielo = Color(0xFF9ED6FA)
@@ -313,6 +316,7 @@ private fun Narracion(ui: EstadoUi) {
     val texto = when {
         ui.narrando -> ui.narracion
         ui.accionEnviada -> "Esperando a ${ui.rival}…"
+        ui.turnoAgotado -> "¡Se acabó el tiempo! Atacarás al azar."
         else -> "¿Qué hará ${ui.miPokemon?.nombre ?: "tu Pokémon"}?"
     }
     Row(
@@ -331,9 +335,38 @@ private fun Narracion(ui: EstadoUi) {
         ) { actual ->
             Text(actual, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
         }
-        if (ui.accionEnviada && !ui.narrando) {
+        val limite = ui.turnoHasta
+        if (!ui.narrando && limite != null && !ui.turnoAgotado) {
+            RelojTurno(limite)
+        } else if (ui.accionEnviada && !ui.narrando) {
             CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
         }
+    }
+}
+
+// Segundos que quedan para elegir el movimiento; amarillo en los últimos 3.
+@Composable
+private fun RelojTurno(limite: Long) {
+    var ahora by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(limite) {
+        while (ahora < limite) {
+            delay(250)
+            ahora = System.currentTimeMillis()
+        }
+    }
+    val restantes = ((limite - ahora + 999) / 1000).coerceAtLeast(0)
+    Box(
+        Modifier
+            .size(36.dp)
+            .background(Color.White.copy(alpha = 0.14f), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            "$restantes",
+            color = if (restantes <= 3) Color(0xFFFFD60A) else Color.White,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Black
+        )
     }
 }
 
